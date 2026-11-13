@@ -1,0 +1,18 @@
+[Unit]
+Description=Broker Papel (Binance Futures simulado)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/broker_papel
+ExecStart=/root/broker_papel/venv/bin/python -m broker_papel.app
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=400M
+CPUQuota=50%
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

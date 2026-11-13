@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Atajo de terminal para Broker Papel.
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+SVC=broker-papel
+case "$1" in
+  logs|ver-logs) journalctl -u $SVC -n 100 -f --no-hostname -o cat ;;
+  reiniciar)     systemctl restart $SVC && sleep 2 && systemctl --no-pager -l status $SVC | head -5 ;;
+  detener)       systemctl stop $SVC && echo "Detenido." ;;
+  arrancar)      systemctl start $SVC && echo "Arrancado." ;;
+  servicio)      systemctl --no-pager -l status $SVC ;;
+  actualizar)    cd "$DIR" && git pull && venv/bin/pip install -q -r requirements.txt && systemctl restart $SVC && echo "Actualizado y reiniciado." ;;
+  pruebas)       cd "$DIR" && venv/bin/python -m pytest -q tests ;;
+  memoria)       systemctl show $SVC -p MemoryCurrent | awk -F= '{printf "Memoria usada: %.0f MB\n", $2/1048576}' ;;
+  *)             cd "$DIR" && exec venv/bin/python -m broker_papel.cli "$@" ;;
+esac

@@ -1,0 +1,46 @@
+# Configuración de Broker Papel. Copia este archivo a config/config.toml y cámbialo a tu gusto.
+# Después de cambiarlo: broker reiniciar
+
+[general]
+zona_horaria = "America/Mexico_City"
+saldo_inicial = 10000          # USDT con que nace cada cuenta nueva
+apalancamiento_inicial = 20    # apalancamiento por defecto en cada moneda
+
+# Las 3 cuentas. Cambia los nombres (solo letras/números, sin espacios).
+# Ojo: si cambias un nombre después de arrancar, se crea una cuenta nueva con ese nombre.
+[[cuentas]]
+nombre = "principal"
+
+[[cuentas]]
+nombre = "pruebas"
+
+[[cuentas]]
+nombre = "agresiva"
+# maker = 0.0002   # puedes poner comisiones distintas por cuenta
+# taker = 0.0005
+
+[comisiones]
+maker = 0.0002   # 0.02 %
+taker = 0.0005   # 0.05 %
+
+[simulacion]
+llenado_limite = "cruza"         # "cruza" (más realista) o "toca"
+deslizamiento_base = 0.0001      # 0.01 % en toda orden market
+deslizamiento_por_50k = 0.0001   # +0.01 % por cada 50,000 USDT de tamaño
+comision_liquidacion = 0.0125    # 1.25 % del tamaño al liquidar en cruzado
+
+[binance]
+peso_max_por_minuto = 200        # tope de peso REST de este programa
+pausa_si_peso_ip_supera = 1800   # si la IP (con tus bots) pasa esto, este programa se frena
+
+[alertas]
+margen_ratio = 0.80              # avisar si el ratio de margen pasa 80 %
+distancia_liquidacion = 0.05     # avisar si una posición está a menos de 5 % de liquidarse
+funding_minimo = 1.0             # avisar cobros/pagos de funding desde 1 USDT
+
+[respaldo]
+hora = 3                         # hora local del respaldo diario
+dias_a_guardar = 14
+
+[control]
+puerto = 8765                    # solo escucha en el propio VPS (127.0.0.1)
