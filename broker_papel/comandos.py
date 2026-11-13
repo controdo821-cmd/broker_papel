@@ -35,6 +35,12 @@ recargar <cuenta> <monto>
 retirar <cuenta> <monto>
 reiniciar-cuenta <cuenta> [saldo]          (borra todo el historial de esa cuenta)
 respaldo                                   copia de la base de datos ahora
+
+estadisticas <cuenta> [hoy|ayer|semana|mes|todo]
+calendario <cuenta> [AAAA-MM]              PnL por día
+anio <cuenta> [AAAA]                       PnL por mes
+exportar <cuenta> [excel|csv]              guarda el historial en data/exportes
+reporte <HH:MM|no>                         hora del reporte diario en Telegram
 """
 
 TIPOS_ALIAS = {
@@ -55,9 +61,10 @@ def simb(x: str) -> str:
 
 
 class Comandos:
-    def __init__(self, motor, mercado, vistas, respaldo_fn=None):
+    def __init__(self, motor, mercado, vistas, respaldo_fn=None, informes=None):
         self.motor, self.m, self.v = motor, mercado, vistas
         self.respaldo_fn = respaldo_fn
+        self.inf = informes
 
     async def ejecutar(self, linea: str | list, origen: str = "terminal") -> str:
         args = shlex.split(linea) if isinstance(linea, str) else list(linea)
@@ -302,6 +309,43 @@ class Comandos:
         if not self.respaldo_fn:
             return "Respaldo no disponible."
         return f"✅ Respaldo guardado en {self.respaldo_fn()}"
+
+    # ---------------- informes
+    async def c_estadisticas(self, a, o):
+        return self.inf.texto_estadisticas(a[0], a[1].lower() if len(a) > 1 else "todo")
+
+    async def c_calendario(self, a, o):
+        from datetime import datetime
+        if len(a) > 1:
+            anio, mes = (int(x) for x in a[1].split("-"))
+        else:
+            hoy = datetime.now(self.inf.est.tz)
+            anio, mes = hoy.year, hoy.month
+        return self.inf.texto_calendario(a[0], anio, mes)
+
+    async def c_anio(self, a, o):
+        from datetime import datetime
+        anio = int(a[1]) if len(a) > 1 else datetime.now(self.inf.est.tz).year
+        return self.inf.texto_anio(a[0], anio)
+
+    async def c_exportar(self, a, o):
+        formato = a[1].lower() if len(a) > 1 else "excel"
+        nombre, datos = (self.inf.est.exportar_csv_zip(a[0]) if formato == "csv" else self.inf.est.exportar_excel(a[0]))
+        carpeta = self.motor.cfg.data_dir / "exportes"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        (carpeta / nombre).write_bytes(datos)
+        return f"✅ Guardado en {carpeta / nombre}"
+
+    async def c_reporte(self, a, o):
+        v = a[0].lower()
+        if v in ("no", "apagar", "off"):
+            self.motor.db.set("reporte_hora", None)
+            return "✅ Reporte diario apagado."
+        h, m = (int(x) for x in (v.split(":") + ["0"])[:2])
+        if not (0 <= h < 24 and 0 <= m < 60):
+            raise ValueError
+        self.motor.db.set("reporte_hora", f"{h:02d}:{m:02d}")
+        return f"✅ Reporte diario a las {h:02d}:{m:02d} ({self.motor.cfg.zona_horaria})."
 
 
 def texto_plano(t: str) -> str:

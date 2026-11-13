@@ -16,6 +16,7 @@ from aiohttp import web
 from .comandos import Comandos
 from .config import cargar
 from .db import DB
+from .informes import Informes
 from .mercado import Mercado
 from .motor import Motor
 from .vistas import Vistas
@@ -84,6 +85,30 @@ async def tareas_diarias(cfg, db, mercado):
             log.exception("Refresco de monedas falló")
 
 
+async def reporte_diario(cfg, db, informes, bot):
+    tz = ZoneInfo(cfg.zona_horaria)
+    while True:
+        await asyncio.sleep(30)
+        try:
+            hora = db.get("reporte_hora")
+            if not hora:
+                continue
+            ahora = datetime.now(tz)
+            hoy = ahora.strftime("%Y-%m-%d")
+            if ahora.strftime("%H:%M") >= hora and db.get("reporte_ultimo") != hoy:
+                db.set("reporte_ultimo", hoy)
+                await bot.enviar_a_todos(informes.texto_reporte_diario(), menu=True)
+                for c in sorted(informes.motor.cuentas.values(), key=lambda x: x.id):
+                    if ahora.day == 1:   # primer día del mes: calendario del mes anterior
+                        a, m = (ahora.year, ahora.month - 1) if ahora.month > 1 else (ahora.year - 1, 12)
+                    else:
+                        a, m = ahora.year, ahora.month
+                    png = await informes.calendario_png(c.id, a, m)
+                    await bot.enviar_foto_a_todos(png, f"Calendario de {c.nombre}")
+        except Exception:
+            log.exception("Reporte diario falló")
+
+
 async def principal():
     cfg = cargar()
     configurar_logs(cfg.data_dir)
@@ -94,14 +119,18 @@ async def principal():
     motor = Motor(db, mercado, cfg)
     mercado.motor = motor
     vistas = Vistas(motor, mercado, cfg)
+    informes = Informes(motor, mercado, cfg, vistas)
+    if db.get("reporte_hora", "sin") == "sin":
+        db.set("reporte_hora", cfg.hora_reporte)
     comandos = Comandos(motor, mercado, vistas,
-                        respaldo_fn=lambda: db.respaldo(cfg.data_dir / "respaldos", cfg.dias_respaldo))
+                        respaldo_fn=lambda: db.respaldo(cfg.data_dir / "respaldos", cfg.dias_respaldo),
+                        informes=informes)
     runner = await servidor_control(cfg, comandos)
 
     bot = None
     if cfg.telegram_token:
         from .telegram_bot import BotTelegram
-        bot = BotTelegram(cfg, motor, mercado, vistas, comandos)
+        bot = BotTelegram(cfg, motor, mercado, vistas, comandos, informes)
         try:
             await bot.iniciar()
         except Exception:
@@ -111,6 +140,8 @@ async def principal():
         log.warning("Sin token de Telegram: el bot no se inicia.")
 
     tareas = [asyncio.create_task(mercado.correr_ws()), asyncio.create_task(tareas_diarias(cfg, db, mercado))]
+    if bot:
+        tareas.append(asyncio.create_task(reporte_diario(cfg, db, informes, bot)))
     parar = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):

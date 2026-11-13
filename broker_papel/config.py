@@ -42,6 +42,7 @@ class Config:
     alerta_funding_minimo: float = 1.0
     puerto_control: int = 8765
     hora_respaldo: int = 3
+    hora_reporte: str | None = "08:00"
     dias_respaldo: int = 14
     telegram_token: str = ""
     telegram_chats: list[int] = field(default_factory=list)
@@ -88,6 +89,9 @@ def cargar(base: Path = BASE) -> Config:
     r = raw.get("respaldo", {})
     c.hora_respaldo = int(r.get("hora", c.hora_respaldo))
     c.dias_respaldo = int(r.get("dias_a_guardar", c.dias_respaldo))
+    rep = raw.get("reporte", {})
+    if "hora" in rep:
+        c.hora_reporte = str(rep["hora"]) if rep["hora"] else None
     t = sec.get("telegram", {})
     c.telegram_token = str(t.get("token", "")).strip()
     c.telegram_chats = [int(x) for x in t.get("chats_autorizados", [])]

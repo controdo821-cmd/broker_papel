@@ -23,7 +23,9 @@ def menu_kb():
         [B("💼 Resumen", callback_data="m:resumen"), B("📈 Posiciones", callback_data="m:pos")],
         [B("📋 Órdenes", callback_data="m:ord"), B("➕ Abrir operación", callback_data="m:abrir")],
         [B("💲 Precio", callback_data="m:precio"), B("📜 Hoy", callback_data="m:hist")],
+        [B("📊 Estadísticas", callback_data="st:todo"), B("🗓 Calendario", callback_data="cal:0:0")],
         [B("💰 Recargar", callback_data="m:recargar"), B("🏧 Retirar", callback_data="m:retirar")],
+        [B("📤 Exportar", callback_data="m:exportar"), B("📉 Curva de saldo", callback_data="m:curva")],
         [B("👤 Cambiar cuenta", callback_data="m:cuenta"), B("⚙️ Ajustes", callback_data="m:ajustes")],
     ])
 
@@ -32,8 +34,9 @@ VOLVER = [B("🏠 Menú", callback_data="m:menu")]
 
 
 class BotTelegram:
-    def __init__(self, cfg, motor, mercado, vistas, comandos: Comandos):
+    def __init__(self, cfg, motor, mercado, vistas, comandos: Comandos, informes=None):
         self.cfg, self.motor, self.m, self.v, self.cmd = cfg, motor, mercado, vistas, comandos
+        self.inf = informes or comandos.inf
         self.app: Application | None = None
         self.chats = set(cfg.telegram_chats)
         self.flujo: dict[int, dict] = {}
@@ -84,6 +87,22 @@ class BotTelegram:
                                                 reply_markup=kb if ult else None, disable_web_page_preview=True)
             except TelegramError as e:
                 log.warning("No se pudo enviar a %s: %s", chat, e)
+
+    async def enviar_foto(self, chat: int, png: bytes, pie: str = "", kb=None):
+        try:
+            await self.app.bot.send_photo(chat, png, caption=pie[:1000], parse_mode=ParseMode.HTML, reply_markup=kb)
+        except TelegramError as e:
+            log.warning("No se pudo enviar foto a %s: %s", chat, e)
+
+    async def enviar_foto_a_todos(self, png: bytes, pie: str = ""):
+        for ch in self.chats:
+            await self.enviar_foto(ch, png, pie)
+
+    async def enviar_doc(self, chat: int, nombre: str, datos: bytes, pie: str = ""):
+        try:
+            await self.app.bot.send_document(chat, datos, filename=nombre, caption=pie[:1000])
+        except TelegramError as e:
+            log.warning("No se pudo enviar archivo a %s: %s", chat, e)
 
     async def enviar_a_todos(self, texto: str, menu=False):
         for ch in self.chats:
@@ -173,6 +192,35 @@ class BotTelegram:
                                     f"marca {self.v.precio(s, self.m.marca(s))}.\n\n"
                                     "Escribe el precio del <b>Take Profit</b>, o un % (ej. <code>5%</code>), "
                                     "<code>no</code> para quitarlo o <code>-</code> para dejarlo igual.")
+        elif k == "pg":   # gráfica de la posición
+            await self.enviar(chat, "⏳ Armando la gráfica…")
+            png, titulo = await self.inf.grafica_posicion(c.id, partes[1], partes[2])
+            await self.enviar_foto(chat, png, html.escape(titulo), kb=K([VOLVER]))
+        elif k == "st":   # estadísticas
+            r = partes[1]
+            filas = [[B(("• " if x == r else "") + n, callback_data=f"st:{x}") for x, n in
+                      (("hoy", "Hoy"), ("semana", "Semana"), ("mes", "Mes"), ("todo", "Todo"))], VOLVER]
+            await self.enviar(chat, self.inf.texto_estadisticas(c.id, r), kb=K(filas))
+        elif k == "cal":  # calendario: cal:AAAA:MM (0:0 = mes actual)
+            from datetime import datetime
+            anio, mes = int(partes[1]), int(partes[2])
+            if not anio:
+                hoy = datetime.now(self.inf.est.tz)
+                anio, mes = hoy.year, hoy.month
+            ant = (anio, mes - 1) if mes > 1 else (anio - 1, 12)
+            sig = (anio, mes + 1) if mes < 12 else (anio + 1, 1)
+            kb = K([[B("◀️", callback_data=f"cal:{ant[0]}:{ant[1]}"), B("Año", callback_data=f"ano:{anio}"),
+                     B("▶️", callback_data=f"cal:{sig[0]}:{sig[1]}")], VOLVER])
+            png = await self.inf.calendario_png(c.id, anio, mes)
+            await self.enviar_foto(chat, png, f"Calendario de PnL · {html.escape(c.nombre)}", kb=kb)
+        elif k == "ano":
+            await self.enviar(chat, self.inf.texto_anio(c.id, int(partes[1])), menu=True)
+        elif k == "ex":
+            if partes[1] == "csv":
+                nombre, datos = self.inf.est.exportar_csv_zip(c.id)
+            else:
+                nombre, datos = self.inf.est.exportar_excel(c.id)
+            await self.enviar_doc(chat, nombre, datos, f"Historial de {c.nombre}")
         elif k == "oc":   # cancelar orden
             tok = self.confirmar(("cancelar", c.id, int(partes[1])))
             await self.enviar(chat, f"¿Cancelar la orden #{partes[1]}?", kb=self.kb_confirmar(tok))
@@ -218,7 +266,8 @@ class BotTelegram:
                 kb = K([
                     [B("Cerrar 25%", callback_data=f"pc:{s}:{lado}:25"), B("50%", callback_data=f"pc:{s}:{lado}:50"),
                      B("100%", callback_data=f"pc:{s}:{lado}:100")],
-                    [B("🎯 Poner / mover TP-SL", callback_data=f"pt:{s}:{lado}")],
+                    [B("🎯 Poner / mover TP-SL", callback_data=f"pt:{s}:{lado}"),
+                     B("📉 Gráfica", callback_data=f"pg:{s}:{lado}")],
                 ])
                 await self.enviar(chat, t, kb=kb)
             await self.enviar(chat, "—", kb=K([[B("🔄 Actualizar", callback_data="m:pos")], VOLVER]))
@@ -244,9 +293,16 @@ class BotTelegram:
             self.flujo[chat] = {"tipo": "abrir", "paso": "moneda", "cuenta": c.id}
             await self.enviar(chat, f"➕ Nueva operación en <b>{html.escape(c.nombre)}</b>\n\nEscribe la moneda (ej. <code>BTC</code>):",
                               kb=K([[B("✖️ Cancelar", callback_data="m:menu")]]))
+        elif que == "exportar":
+            await self.enviar(chat, f"📤 Exportar historial de {html.escape(c.nombre)}:",
+                              kb=K([[B("Excel", callback_data="ex:xlsx"), B("CSV (zip)", callback_data="ex:csv")], VOLVER]))
+        elif que == "curva":
+            png = await self.inf.curva_png(c.id)
+            await self.enviar_foto(chat, png, f"Saldo de {html.escape(c.nombre)}", kb=K([VOLVER]))
         elif que == "ajustes":
             t = (f"⚙️ <b>{html.escape(c.nombre)}</b>\nModo: {'cobertura' if c.cobertura else 'unidireccional'}\n"
                  f"Comisiones: maker {c.maker * 100:.4f}%  ·  taker {c.taker * 100:.4f}%\n\n"
+                 f"Reporte diario: {self.motor.db.get('reporte_hora') or 'apagado'} (cámbialo con <code>/c reporte 08:00</code>)\n\n"
                  "Más opciones escribiendo <code>/c ayuda</code>")
             await self.enviar(chat, t, kb=K([[B("🔁 Cambiar modo de posición", callback_data="aj:modo")], VOLVER]))
 

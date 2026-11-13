@@ -42,5 +42,8 @@ funding_minimo = 1.0             # avisar cobros/pagos de funding desde 1 USDT
 hora = 3                         # hora local del respaldo diario
 dias_a_guardar = 14
 
+[reporte]
+hora = "08:00"                   # reporte diario en Telegram (se cambia también con: /c reporte 09:30)
+
 [control]
 puerto = 8765                    # solo escucha en el propio VPS (127.0.0.1)
