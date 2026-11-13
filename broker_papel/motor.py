@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 from collections import defaultdict
 from typing import Callable, Optional
@@ -327,7 +328,8 @@ class Motor:
                 tif: str = "GTC", solo_reducir: bool = False, cerrar_posicion: bool = False,
                 disparo: str = "CONTRACT_PRICE", activacion: float | None = None, retroceso: float | None = None,
                 tp: float | None = None, sl: float | None = None, tpsl_disparo: str = "MARK_PRICE",
-                origen: str = "manual", ts: int | None = None, post_only: bool = False) -> Orden:
+                origen: str = "manual", ts: int | None = None, post_only: bool = False,
+                cliente_id: str | None = None) -> Orden:
         c = self.cuenta(cuenta)
         simbolo = simbolo.upper().strip()
         if not simbolo.endswith("USDT"):
@@ -358,7 +360,8 @@ class Motor:
         ts = ts or self.reloj()
         o = Orden(cuenta=c.id, simbolo=simbolo, lado=lado, lado_pos=lado_pos, tipo=tipo, tif=tif,
                   solo_reducir=solo_reducir, cerrar_posicion=cerrar_posicion, disparo=disparo.upper(),
-                  tp=tp, sl=sl, tpsl_disparo=tpsl_disparo.upper(), origen=origen, creada=ts, actualizada=ts)
+                  tp=tp, sl=sl, tpsl_disparo=tpsl_disparo.upper(), origen=origen, creada=ts, actualizada=ts,
+                  cliente_id=cliente_id or ("bp_" + secrets.token_hex(10)))
 
         # ---- cantidad
         if cerrar_posicion:

@@ -44,6 +44,13 @@ class Config:
     hora_respaldo: int = 3
     hora_reporte: str | None = "08:00"
     dias_respaldo: int = 14
+    web_activa: bool = True
+    web_host: str = "127.0.0.1"
+    web_puerto: int = 8080
+    web_cookie_segura: bool = False
+    api_activa: bool = False
+    api_host: str = "127.0.0.1"
+    api_puerto: int = 8090
     telegram_token: str = ""
     telegram_chats: list[int] = field(default_factory=list)
     data_dir: Path = BASE / "data"
@@ -92,6 +99,15 @@ def cargar(base: Path = BASE) -> Config:
     rep = raw.get("reporte", {})
     if "hora" in rep:
         c.hora_reporte = str(rep["hora"]) if rep["hora"] else None
+    w = raw.get("web", {})
+    c.web_activa = bool(w.get("activa", c.web_activa))
+    c.web_host = w.get("host", c.web_host)
+    c.web_puerto = int(w.get("puerto", c.web_puerto))
+    c.web_cookie_segura = bool(w.get("cookie_segura", c.web_cookie_segura))
+    ap = raw.get("api", {})
+    c.api_activa = bool(ap.get("activa", c.api_activa))
+    c.api_host = ap.get("host", c.api_host)
+    c.api_puerto = int(ap.get("puerto", c.api_puerto))
     t = sec.get("telegram", {})
     c.telegram_token = str(t.get("token", "")).strip()
     c.telegram_chats = [int(x) for x in t.get("chats_autorizados", [])]

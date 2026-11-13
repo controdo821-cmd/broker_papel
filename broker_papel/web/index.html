@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broker Papel</title><link rel="stylesheet" href="/static/estilo.css"></head>
+<body>
+<header class="barra">
+  <div class="marca">Broker <span>Papel</span></div>
+  <select id="cuenta" title="Cuenta"></select>
+  <div class="simbolo"><input id="simbolo" list="lista-simbolos" value="BTCUSDT" spellcheck="false" autocomplete="off"><datalist id="lista-simbolos"></datalist></div>
+  <div class="dato"><small>Último</small><b id="m-ultimo">--</b></div>
+  <div class="dato"><small>Marca</small><b id="m-marca">--</b></div>
+  <div class="dato"><small>Índice</small><b id="m-indice">--</b></div>
+  <div class="dato"><small>Funding / cuenta regresiva</small><b><span id="m-funding">--</span> <span id="m-cuenta">--</span></b></div>
+  <div class="dato"><small>Bid / Ask</small><b id="m-libro">--</b></div>
+  <button id="salir" class="sec">Salir</button>
+</header>
+
+<main class="rejilla">
+  <section class="grafica">
+    <div class="intervalos" id="intervalos">
+      <button data-i="1m">1m</button><button data-i="5m">5m</button><button data-i="15m" class="act">15m</button>
+      <button data-i="1h">1h</button><button data-i="4h">4h</button><button data-i="1d">1d</button>
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  <section class="panel">
+    <div class="fila">
+      <button id="b-margen" class="sec">Cruzado</button>
+      <button id="b-lev" class="sec">20x</button>
+      <button id="b-modo" class="sec">Unidireccional</button>
+    </div>
+    <div class="tabs-orden" id="tipos">
+      <button data-t="LIMIT" class="act">Límite</button><button data-t="MARKET">Market</button>
+      <button data-t="STOP">Stop Límite</button><button data-t="STOP_MARKET">Stop Market</button>
+      <button data-t="TAKE_PROFIT">TP Límite</button><button data-t="TAKE_PROFIT_MARKET">TP Market</button>
+      <button data-t="TRAILING_STOP_MARKET">Trailing</button>
+    </div>
+    <div class="disp">Disponible: <b id="disp">--</b> USDT</div>
+    <label class="c-stop">Precio de disparo<input id="o-stop" type="number" step="any"></label>
+    <label class="c-disparo">Disparar con
+      <select id="o-disparo"><option value="CONTRACT_PRICE">Último precio</option><option value="MARK_PRICE">Precio de marca</option></select></label>
+    <label class="c-precio">Precio<input id="o-precio" type="number" step="any"></label>
+    <label class="c-trail">% de retroceso (0.1 a 10)<input id="o-ret" type="number" step="0.1" value="1"></label>
+    <label class="c-trail">Precio de activación (opcional)<input id="o-act" type="number" step="any"></label>
+    <label>Tamaño
+      <span class="dos"><input id="o-cant" type="number" step="any" placeholder="0">
+      <select id="o-unidad"><option value="usdt">USDT margen</option><option value="moneda">Moneda</option></select></span></label>
+    <div class="pcts"><button data-p="10">10%</button><button data-p="25">25%</button><button data-p="50">50%</button><button data-p="75">75%</button><button data-p="100">100%</button></div>
+    <div class="info-orden" id="o-info"></div>
+    <label class="chk"><input type="checkbox" id="o-tpsl"> TP/SL</label>
+    <div id="caja-tpsl" class="oculto">
+      <label>Take Profit<input id="o-tp" type="number" step="any"></label>
+      <label>Stop Loss<input id="o-sl" type="number" step="any"></label>
+    </div>
+    <div class="fila chks">
+      <label class="chk"><input type="checkbox" id="o-reducir"> Solo reducir</label>
+      <label class="chk c-limite"><input type="checkbox" id="o-post"> Post only</label>
+      <select id="o-tif" class="c-limite"><option>GTC</option><option>IOC</option><option>FOK</option></select>
+    </div>
+    <div class="fila">
+      <button id="b-comprar" class="compra">Comprar / Long</button>
+      <button id="b-vender" class="venta">Vender / Short</button>
+    </div>
+    <div class="resumen-cuenta" id="resumen"></div>
+  </section>
+
+  <section class="abajo">
+    <div class="tabs" id="tabs">
+      <button data-tab="pos" class="act">Posiciones</button><button data-tab="ord">Órdenes abiertas</button>
+      <button data-tab="hord">Historial órdenes</button><button data-tab="fills">Llenados</button>
+      <button data-tab="tx">Transacciones</button><button data-tab="cerr">Posiciones cerradas</button>
+      <button data-tab="est">Estadísticas</button><button data-tab="cal">Calendario PnL</button><button data-tab="cta">Cuenta</button>
+    </div>
+    <div id="contenido" class="contenido"></div>
+  </section>
+</main>
+<div id="aviso" class="aviso oculto"></div>
+<dialog id="dlg"><form method="dialog" id="dlg-form"><div id="dlg-cuerpo"></div>
+  <div class="fila"><button value="no" class="sec">Cancelar</button><button value="si" id="dlg-ok">Confirmar</button></div></form></dialog>
+<footer class="pie">Solo simulación con datos públicos de Binance · Gráficas: <a href="https://www.tradingview.com/" rel="noopener" target="_blank">TradingView Lightweight Charts</a></footer>
+<script src="/static/vendor/lightweight-charts.js"></script>
+<script src="/static/app.js"></script>
+</body></html>

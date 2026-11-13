@@ -17,6 +17,7 @@ from .comandos import Comandos
 from .config import cargar
 from .db import DB
 from .informes import Informes
+from .auth import Auth
 from .mercado import Mercado
 from .motor import Motor
 from .vistas import Vistas
@@ -122,10 +123,18 @@ async def principal():
     informes = Informes(motor, mercado, cfg, vistas)
     if db.get("reporte_hora", "sin") == "sin":
         db.set("reporte_hora", cfg.hora_reporte)
+    auth = Auth(db, motor)
     comandos = Comandos(motor, mercado, vistas,
                         respaldo_fn=lambda: db.respaldo(cfg.data_dir / "respaldos", cfg.dias_respaldo),
-                        informes=informes)
+                        informes=informes, auth=auth)
     runner = await servidor_control(cfg, comandos)
+    corredores = [runner]
+    if cfg.web_activa:
+        from .web import Web
+        corredores.append(await Web(cfg, motor, mercado, vistas, informes, auth, comandos).iniciar())
+    if cfg.api_activa:
+        from .api_binance import ApiBinance
+        corredores.append(await ApiBinance(cfg, motor, mercado, auth).iniciar())
 
     bot = None
     if cfg.telegram_token:
@@ -156,7 +165,8 @@ async def principal():
         t.cancel()
     if bot:
         await bot.detener()
-    await runner.cleanup()
+    for r in corredores:
+        await r.cleanup()
     await mercado.cerrar()
     log.info("Detenido.")
 

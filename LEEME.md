@@ -80,7 +80,59 @@ por ejemplo `/c abrir 1 BTC long 100 x10 tp 120000 sl 95000`.
 
 La cuenta puede ser su nombre o su número (1, 2, 3).
 
-## 5. Arrancar, detener, ver qué pasa
+## 5. Página web (opcional, privada)
+
+La web solo escucha dentro del VPS, así que nadie de afuera la ve. Para abrirla desde tu computadora usas un túnel SSH.
+
+1. En el VPS, crea tu usuario (te pide la contraseña, mínimo 10 caracteres):
+
+```bash
+broker crear-usuario rodo
+broker activar-2fa rodo        # opcional: te da la clave para Google Authenticator
+```
+
+Si quieres un usuario que solo vea una cuenta: `broker crear-usuario pedro 2`.
+
+2. En tu computadora (Windows, Mac o Linux), abre una terminal y deja esto corriendo:
+
+```bash
+ssh -N -L 8080:127.0.0.1:8080 root@IP_DE_TU_VPS
+```
+
+3. Abre en el navegador: http://localhost:8080
+
+Ahí tienes gráfica de velas con tus entradas, TP, SL, liquidación y órdenes marcadas, todos los tipos de orden,
+posiciones, órdenes, historiales, estadísticas, calendario de PnL, recargas, retiros y exportar a Excel o CSV.
+Tras 5 contraseñas malas el usuario se bloquea 15 minutos. Las sesiones vencen con 2 horas sin uso o a las 24 horas.
+
+Otros: `broker usuarios`, `broker cambiar-contrasena rodo`, `broker quitar-2fa rodo`, `broker borrar-usuario rodo`.
+
+Desde el teléfono también funciona con apps de SSH que hagan túneles (por ejemplo Termius), pero para el
+teléfono lo más cómodo es Telegram.
+
+## 6. Estadísticas, calendario y reporte diario
+
+- Telegram: botones **Estadísticas**, **Calendario** (imagen como la de Binance, con ◀ ▶ para cambiar de mes),
+  **Curva de saldo**, **Exportar** (te manda el Excel o el CSV) y **Gráfica** en cada posición.
+- Reporte diario: llega a las 8:00 por defecto. Cámbialo con `/c reporte 09:30` o apágalo con `/c reporte no`.
+- Terminal: `broker estadisticas 1 mes`, `broker calendario 1 2026-11`, `broker anio 1`, `broker exportar 1 excel`.
+
+## 7. API compatible con Binance (para probar tus bots)
+
+Tus bots pueden hablarle a este broker como si fuera Binance Futures, sin dinero real.
+
+1. Actívala en `config/config.toml`, sección `[api]`, con `activa = true`, y luego `broker reiniciar`.
+2. Crea una llave falsa: `broker crear-llave 3` (te da API key y secret de la cuenta 3).
+3. En tu bot cambia la URL base de `https://fapi.binance.com` a `http://127.0.0.1:8090` y usa esa llave.
+
+Rutas: `order` (crear, ver, cancelar), `openOrders`, `allOpenOrders`, `allOrders`, `positionRisk`, `balance`, `account`
+(v2 y v3), `leverage`, `marginType`, `positionSide/dual`, `positionMargin`, `userTrades`, `income`, `leverageBracket`,
+`commissionRate`, y las públicas `ping`, `time`, `exchangeInfo`, `premiumIndex`, `ticker/price`, `ticker/bookTicker`, `klines`.
+La firma HMAC, el `timestamp`/`recvWindow` y los errores son como los de Binance.
+Lo que no tiene: el WebSocket de usuario (listenKey responde, pero no manda eventos). Para precios en vivo tus bots siguen usando
+los WebSockets públicos de Binance como siempre.
+
+## 8. Arrancar, detener, ver qué pasa
 
 ```bash
 broker arrancar      # arranca el servicio
@@ -95,7 +147,7 @@ broker pruebas       # correr las pruebas de los cálculos
 Arranca solo cuando se reinicia el VPS. Si se cae un rato, al volver revisa las velas de 1 minuto de ese hueco y
 ejecuta con la hora correcta lo que se habría llenado (límites, stops, TP, liquidaciones y funding).
 
-## 6. Actualizar
+## 9. Actualizar
 
 ```bash
 broker actualizar
@@ -103,7 +155,7 @@ broker actualizar
 
 Baja la versión nueva, instala lo que falte y reinicia. Tus datos y tu configuración no se tocan.
 
-## 7. Respaldos
+## 10. Respaldos
 
 - Automático cada día a la hora de `config.toml` (por defecto 3:00), guarda 14 días en `/root/broker_papel/data/respaldos/`.
 - Manual: `broker respaldo`
@@ -116,7 +168,7 @@ rm -f /root/broker_papel/data/broker.db-wal /root/broker_papel/data/broker.db-sh
 broker arrancar
 ```
 
-## 8. Cómo simula (igual que Binance, con estas reglas)
+## 11. Cómo simula (igual que Binance, con estas reglas)
 
 - **Market:** compra al ask y vende al bid del momento, más el deslizamiento configurable según el tamaño. Paga taker.
 - **Límite:** se llena a tu precio cuando el último precio lo **cruza** (o lo toca, si lo cambias en la configuración). Paga maker.

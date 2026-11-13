@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broker Papel · Entrar</title><link rel="stylesheet" href="/static/estilo.css"></head>
+<body class="login">
+<form id="f" class="caja">
+  <h1>Broker <span>Papel</span></h1>
+  <p class="sub">Futuros simulados · dinero ficticio</p>
+  <label>Usuario<input name="usuario" autocomplete="username" required autofocus></label>
+  <label>Contraseña<input name="contrasena" type="password" autocomplete="current-password" required></label>
+  <label>Código 2FA (si lo activaste)<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+  <button>Entrar</button>
+  <div id="err" class="err"></div>
+</form>
+<script src="/static/login.js"></script>
+</body></html>

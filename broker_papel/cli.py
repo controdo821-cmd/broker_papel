@@ -23,6 +23,13 @@ def main():
         if r.strip().upper() != "SI":
             print("Cancelado.")
             return
+    if args[0] in ("crear-usuario", "cambiar-contrasena"):
+        import getpass
+        pw = getpass.getpass("Contraseña nueva (mínimo 10 caracteres): ")
+        if pw != getpass.getpass("Repítela: "):
+            print("No coinciden.")
+            return
+        args += ["--pw", pw]
     cfg = cargar()
     tok_f = cfg.data_dir / "control.token"
     if not tok_f.exists():

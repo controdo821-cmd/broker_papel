@@ -61,6 +61,7 @@ class Orden:
     sl: Optional[float] = None
     tpsl_disparo: str = "MARK_PRICE"
     tpsl_creados: bool = False
+    cliente_id: str = ""
     origen: str = "manual"            # manual, tp, sl, liquidacion, deslistado, telegram, terminal
     motivo: str = ""
     creada: int = 0

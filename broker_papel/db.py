@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS posiciones_cerradas (
 );
 CREATE INDEX IF NOT EXISTS ix_pc ON posiciones_cerradas(cuenta, cerrada);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS usuarios (
+  usuario TEXT PRIMARY KEY, hash TEXT, cuenta INTEGER, totp TEXT, fallos INTEGER DEFAULT 0,
+  bloqueado_hasta INTEGER DEFAULT 0, creado INTEGER
+);
+CREATE TABLE IF NOT EXISTS sesiones (token TEXT PRIMARY KEY, usuario TEXT, creada INTEGER, ultimo INTEGER, ip TEXT);
+CREATE TABLE IF NOT EXISTS llaves_api (llave TEXT PRIMARY KEY, secreto TEXT, cuenta INTEGER, creada INTEGER);
 """
 
 

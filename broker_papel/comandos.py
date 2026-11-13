@@ -41,6 +41,14 @@ calendario <cuenta> [AAAA-MM]              PnL por día
 anio <cuenta> [AAAA]                       PnL por mes
 exportar <cuenta> [excel|csv]              guarda el historial en data/exportes
 reporte <HH:MM|no>                         hora del reporte diario en Telegram
+
+usuarios                                   usuarios de la página web
+crear-usuario <usuario> [cuenta]           pide la contraseña (sin cuenta = ve las 3)
+cambiar-contrasena <usuario>
+borrar-usuario <usuario>
+activar-2fa <usuario> / quitar-2fa <usuario>
+crear-llave <cuenta>                       llave de API falsa para tus bots
+llaves / borrar-llave <inicio de la llave>
 """
 
 TIPOS_ALIAS = {
@@ -61,8 +69,9 @@ def simb(x: str) -> str:
 
 
 class Comandos:
-    def __init__(self, motor, mercado, vistas, respaldo_fn=None, informes=None):
+    def __init__(self, motor, mercado, vistas, respaldo_fn=None, informes=None, auth=None):
         self.motor, self.m, self.v = motor, mercado, vistas
+        self.auth = auth
         self.respaldo_fn = respaldo_fn
         self.inf = informes
 
@@ -78,8 +87,11 @@ class Comandos:
             return await f(a, origen)
         except BinanceError as e:
             return "❌ " + str(e)
-        except (IndexError, ValueError):
-            return "❌ Faltan datos o hay un número mal escrito. Escribe 'ayuda'."
+        except IndexError:
+            return "❌ Faltan datos. Escribe 'ayuda'."
+        except ValueError as e:
+            m = str(e)
+            return "❌ " + (m if " " in m and not m.startswith("could not") else "Hay un número mal escrito. Escribe 'ayuda'.")
 
     # ---------------- consultas
     async def c_ayuda(self, a, o):
@@ -346,6 +358,65 @@ class Comandos:
             raise ValueError
         self.motor.db.set("reporte_hora", f"{h:02d}:{m:02d}")
         return f"✅ Reporte diario a las {h:02d}:{m:02d} ({self.motor.cfg.zona_horaria})."
+
+    # ---------------- usuarios web y llaves (solo terminal)
+    def _solo_terminal(self, o):
+        if o != "terminal":
+            raise BinanceError(-1000, "Not allowed.", "Por seguridad esto solo se hace desde la terminal del VPS.")
+
+    async def c_usuarios(self, a, o):
+        filas = self.auth.lista()
+        if not filas:
+            return "No hay usuarios. Crea uno con: broker crear-usuario <usuario> [cuenta]"
+        nom = {c.id: c.nombre for c in self.motor.cuentas.values()}
+        return "\n".join(f"• {u['usuario']}  cuenta: {nom.get(u['cuenta'], 'todas')}  2FA: {'sí' if u['dosfa'] else 'no'}"
+                         for u in filas)
+
+    async def c_crear_usuario(self, a, o):
+        self._solo_terminal(o)
+        pw = a[a.index("--pw") + 1]
+        args = a[:a.index("--pw")]
+        u = self.auth.crear(args[0], pw, args[1] if len(args) > 1 else None)
+        return f"✅ Usuario {u} creado. Para activar Google Authenticator: broker activar-2fa {u}"
+
+    async def c_cambiar_contrasena(self, a, o):
+        self._solo_terminal(o)
+        self.auth.cambiar(a[0], a[a.index("--pw") + 1])
+        return "✅ Contraseña cambiada (se cerraron sus sesiones)."
+
+    async def c_borrar_usuario(self, a, o):
+        self._solo_terminal(o)
+        self.auth.borrar(a[0])
+        return "✅ Usuario borrado."
+
+    async def c_activar_2fa(self, a, o):
+        self._solo_terminal(o)
+        sec, uri = self.auth.activar_2fa(a[0])
+        return ("✅ 2FA activado. En Google Authenticator: + → Ingresar clave de configuración\n"
+                f"Cuenta: Broker Papel ({a[0].lower()})\nClave: {sec}\nTipo: basada en tiempo\n\n"
+                f"O escanea este enlace como QR: {uri}")
+
+    async def c_quitar_2fa(self, a, o):
+        self._solo_terminal(o)
+        self.auth.quitar_2fa(a[0])
+        return "✅ 2FA quitado."
+
+    async def c_crear_llave(self, a, o):
+        self._solo_terminal(o)
+        k, sec = self.auth.crear_llave(a[0])
+        return (f"✅ Llave de API falsa para {self.motor.cuenta(a[0]).nombre} (solo sirve en este broker):\n"
+                f"API key:    {k}\nAPI secret: {sec}\nGuárdalas ahora: el secreto no se vuelve a mostrar.")
+
+    async def c_llaves(self, a, o):
+        nom = {c.id: c.nombre for c in self.motor.cuentas.values()}
+        filas = self.auth.llaves()
+        return "\n".join(f"• {x['llave'][:12]}…  cuenta {nom.get(x['cuenta'])}" for x in filas) or "No hay llaves."
+
+    async def c_borrar_llave(self, a, o):
+        self._solo_terminal(o)
+        if len(a[0]) < 6:
+            return "❌ Escribe al menos los primeros 6 caracteres de la llave."
+        return f"✅ {self.auth.borrar_llave(a[0])} llave(s) borrada(s)."
 
 
 def texto_plano(t: str) -> str:
