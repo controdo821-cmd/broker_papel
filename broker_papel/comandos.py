@@ -150,7 +150,16 @@ class Comandos:
         largo = lado_txt in ("long", "compra", "buy")
         self.motor.info(s)
         await self.m.asegurar(s)
-        resto = [x.lower() for x in a[4:]]
+        antes = list(self.motor.ajuste(c, s))
+        try:
+            return await self._abrir(c, s, largo, monto, [x.lower() for x in a[4:]], origen)
+        except BinanceError:
+            if self.motor.ajuste(c, s) != antes and not any(p.simbolo == s for p in self.motor.posiciones_abiertas(c)):
+                c.ajustes[s] = antes            # si la orden falla, se regresa el apalancamiento/margen anterior
+                self.motor._guardar_ajuste(c, s)
+            raise
+
+    async def _abrir(self, c, s, largo, monto, resto, origen):
         precio = tp = sl = None
         i = 0
         while i < len(resto):
