@@ -45,7 +45,8 @@ class FalsoBinance:
         a.router.add_get("/fapi/v1/klines", self.klines)
         a.router.add_get("/fapi/v1/markPriceKlines", self.klines)
         a.router.add_get("/fapi/v1/fundingRate", self.funding)
-        a.router.add_get("/stream", self.ws)
+        a.router.add_get("/market/stream", self.ws)
+        a.router.add_get("/public/ws", self.ws)
         return a
 
     def _h(self):
@@ -74,14 +75,22 @@ class FalsoBinance:
     async def ws(self, r):
         ws = web.WebSocketResponse()
         await ws.prepare(r)
+        ws.ruta = r.path
         self.ws_clientes.append(ws)
         async for m in ws:
             self.subs.append(json.loads(m.data))
         return ws
 
     async def emitir(self, stream, data):
-        for ws in self.ws_clientes:
-            await ws.send_str(json.dumps({"stream": stream, "data": data}))
+        # como Binance real: marca y velas solo por /market (combinado); libro solo por /public (directo)
+        publico = "depth" in stream or "bookTicker" in stream
+        for ws in list(self.ws_clientes):
+            if ws.closed:
+                continue
+            if publico and ws.ruta == "/public/ws":
+                await ws.send_str(json.dumps(data))
+            elif not publico and ws.ruta == "/market/stream":
+                await ws.send_str(json.dumps({"stream": stream, "data": data}))
 
 
 async def esperar(cond, t=3.0):
@@ -110,7 +119,7 @@ async def test_punta_a_punta(tmp_path, aiohttp_server):
     v = Vistas(motor, m, cfg)
     cmd = Comandos(motor, m, v)
     tarea = asyncio.create_task(m.correr_ws())
-    assert await esperar(lambda: fb.ws_clientes)
+    assert await esperar(lambda: len(fb.ws_clientes) == 2)
     now = int(time.time() * 1000)
     T = now + 3600_000
     await fb.emitir("!markPrice@arr@1s", [{"e": "markPriceUpdate", "E": now, "s": "BTCUSDT", "p": "10000.0",
@@ -121,6 +130,10 @@ async def test_punta_a_punta(tmp_path, aiohttp_server):
     assert "Llenada" in r, r
     assert await esperar(lambda: any(s.get("method") == "SUBSCRIBE" for s in fb.subs))
     assert "btcusdt@kline_1m" in sum((s["params"] for s in fb.subs), [])
+    assert await esperar(lambda: "btcusdt@depth5@500ms" in sum((s["params"] for s in fb.subs), []))
+    await fb.emitir("btcusdt@depth5@500ms", {"e": "depthUpdate", "E": now, "s": "BTCUSDT",
+                                             "b": [["9999.9", "1"]], "a": [["10000.1", "1"]]})
+    assert await esperar(lambda: m.libro("BTCUSDT") == (9999.9, 10000.1))
     c = motor.cuenta("uno")
     assert motor.posiciones_abiertas(c)[0].amt == pytest.approx(0.1)
 

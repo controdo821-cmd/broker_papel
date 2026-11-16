@@ -1,8 +1,10 @@
 """Datos públicos de Binance Futures: casi todo por WebSocket, muy poco REST.
 
 - !markPrice@arr@1s  -> precio de marca, índice, funding y hora del próximo funding de TODAS las monedas.
+  (ruta /market)
 - <moneda>@kline_1m   -> último precio con máximos/mínimos (solo monedas con posiciones u órdenes).
-- <moneda>@depth5@500ms -> mejor bid/ask (solo esas mismas monedas).
+  (ruta /market)
+- <moneda>@depth5@500ms -> mejor bid/ask (solo esas mismas monedas). (ruta /public)
 REST: exchangeInfo y brackets una vez al día, velas solo para ponerse al día o para gráficas.
 """
 from __future__ import annotations
@@ -68,7 +70,9 @@ class Mercado:
         self._vela: dict[str, list] = {}
         self._interes: dict[str, float] = {}
         self._suscritos: set[str] = set()
-        self._ws = None
+        self._sus_ruta: dict[str, set[str]] = {"market": set(), "public": set()}
+        self._ws: dict = {"market": None, "public": None}
+        self._lock_sync = asyncio.Lock()
         self._sesion: aiohttp.ClientSession | None = None
         self.lim = Limitador(cfg.peso_max_por_minuto, cfg.pausa_si_peso_ip_supera)
         self.procesado_hasta = db.get("procesado_hasta", 0)
@@ -267,37 +271,62 @@ class Mercado:
             s |= self.motor.simbolos_activos()
         return {x for x in s if x in self.simbolos}
 
-    async def _enviar(self, metodo: str, streams: list[str]):
-        if not streams or self._ws is None or self._ws.closed:
+    # Binance separó sus WebSockets: /market (marca, velas) y /public (libro).
+    RUTAS = {"market": ("kline_1m",), "public": ("depth5@500ms",)}
+
+    async def _enviar(self, ruta: str, metodo: str, streams: list[str]):
+        ws = self._ws.get(ruta)
+        if not streams or ws is None or ws.closed:
             return
         for i in range(0, len(streams), 50):
             self._sub_id += 1
-            await self._ws.send_json({"method": metodo, "params": streams[i:i + 50], "id": self._sub_id})
+            await ws.send_json({"method": metodo, "params": streams[i:i + 50], "id": self._sub_id})
             await asyncio.sleep(0.25)   # Binance: máx 10 mensajes por segundo
 
     async def _sincronizar_suscripciones(self):
+        async with self._lock_sync:     # las dos conexiones sincronizan; que no se pisen
+            await self._sincronizar()
+
+    async def _sincronizar(self):
         quiero = self._deseados()
-        nuevos, viejos = quiero - self._suscritos, self._suscritos - quiero
-        if nuevos:
-            await self._enviar("SUBSCRIBE", [f"{s.lower()}@{x}" for s in nuevos for x in ("kline_1m", "depth5@500ms")])
-        if viejos:
-            await self._enviar("UNSUBSCRIBE", [f"{s.lower()}@{x}" for s in viejos for x in ("kline_1m", "depth5@500ms")])
-            for s in viejos:
-                self._vela.pop(s, None)
-        self._suscritos = quiero
+        for ruta, tipos in self.RUTAS.items():
+            ws = self._ws.get(ruta)
+            if ws is None or ws.closed:
+                continue
+            tengo = self._sus_ruta[ruta]
+            nuevos, viejos = quiero - tengo, tengo - quiero
+            if nuevos:
+                await self._enviar(ruta, "SUBSCRIBE", [f"{s.lower()}@{x}" for s in nuevos for x in tipos])
+            if viejos:
+                await self._enviar(ruta, "UNSUBSCRIBE", [f"{s.lower()}@{x}" for s in viejos for x in tipos])
+                for s in viejos:
+                    if ruta == "market":
+                        self._vela.pop(s, None)
+                    else:
+                        self._libro.pop(s, None)
+            self._sus_ruta[ruta] = quiero
+        self._suscritos = self._sus_ruta["market"] | self._sus_ruta["public"]
 
     async def correr_ws(self):
+        await asyncio.gather(self._correr_ruta("market"), self._correr_ruta("public"))
+
+    async def _correr_ruta(self, ruta: str):
         espera = 1
         while True:
             try:
-                url = f"{self.cfg.ws}/stream?streams=!markPrice@arr@1s"
+                if ruta == "market":
+                    url = f"{self.cfg.ws}/market/stream?streams=!markPrice@arr@1s"
+                else:
+                    url = f"{self.cfg.ws}/public/ws"
                 async with self._sesion.ws_connect(url, heartbeat=30, max_msg_size=0) as ws:
-                    self._ws = ws
-                    self._suscritos = set()
-                    self.ws_conectado = True
-                    log.info("WebSocket conectado.")
+                    self._ws[ruta] = ws
+                    self._sus_ruta[ruta] = set()
+                    if ruta == "market":
+                        self.ws_conectado = True
+                    log.info("WebSocket %s conectado.", ruta)
                     espera = 1
-                    await self._ponerse_al_dia()
+                    if ruta == "market":
+                        await self._ponerse_al_dia()
                     await self._sincronizar_suscripciones()
                     sync = asyncio.create_task(self._bucle_sync())
                     try:
@@ -311,10 +340,14 @@ class Mercado:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning("WebSocket caído: %s", e)
-            self.ws_conectado = False
-            self.en_vivo = False
-            log.info("Reconectando WebSocket en %ss…", espera)
+                log.warning("WebSocket %s caído: %s", ruta, e)
+            self._ws[ruta] = None
+            if ruta == "market":
+                self.ws_conectado = False
+                self.en_vivo = False
+            else:
+                self._libro.clear()
+            log.info("Reconectando WebSocket %s en %ss…", ruta, espera)
             await asyncio.sleep(espera)
             espera = min(espera * 2, 60)
 
@@ -331,9 +364,12 @@ class Mercado:
             m = json.loads(texto)
         except ValueError:
             return
-        d = m.get("data")
-        if d is None:
-            return
+        if isinstance(m, dict) and "data" in m:
+            d = m["data"]          # formato combinado {"stream", "data"}
+        elif isinstance(m, dict) and "e" in m:
+            d = m                  # formato directo (/ws)
+        else:
+            return                 # respuestas a SUBSCRIBE: {"result": null, "id": n}
         try:
             if isinstance(d, list):
                 self._marcas(d)
